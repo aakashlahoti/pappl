@@ -115,6 +115,7 @@ papplPrinterCreate(
     IPP_OP_CANCEL_MY_JOBS,
     IPP_OP_CLOSE_JOB,
     IPP_OP_IDENTIFY_PRINTER
+    IPP_OP_GET_NEXT_DOCUMENT_DATA
   };
   static const char * const charset[] =	// charset-supported values
   {
@@ -173,6 +174,22 @@ papplPrinterCreate(
     "not-completed",
     "all"
   };
+  static const char * const destination_uri_schemes[] =
+  {					// destination-uri-schemes-supported
+    "http",
+    "https",
+    "ftp",
+    "ftps"
+  };
+  static const char * const destination_accesses_supported[] =
+  {					// destination-accesses-supported
+    "access-oauth-token",
+    "access-oauth-uri",
+    "access-password ",
+    "access-pin",
+    "access-user-name",
+    "access-x509-certificate"
+  };
 
 
   // Range check input...
@@ -195,13 +212,22 @@ papplPrinterCreate(
   // Prepare URI values for the printer attributes...
   if (system->options & PAPPL_SOPTIONS_MULTI_QUEUE)
   {
-    snprintf(resource, sizeof(resource), "/ipp/print/%s", printer_name);
+    if (type == PAPPL_SERVICE_TYPE_SCAN)
+      snprintf(resource, sizeof(resource), "/ipp/scan/%s", printer_name);
+    else
+      snprintf(resource, sizeof(resource), "/ipp/print/%s", printer_name);
+
     for (resptr = resource + 11; *resptr; resptr ++)
       if ((*resptr & 255) <= ' ' || *resptr == 0x7f)
 	*resptr = '_';
   }
   else
-    strlcpy(resource, "/ipp/print", sizeof(resource));
+  {    
+    if (type == PAPPL_SERVICE_TYPE_SCAN)
+      strlcpy(resource, "/ipp/scan", sizeof(resource));
+    else
+      strlcpy(resource, "/ipp/print", sizeof(resource));
+  }
 
   papplLog(system, PAPPL_LOGLEVEL_INFO, "Printer '%s' at resource path '%s'.", printer_name, resource);
 
@@ -225,7 +251,10 @@ papplPrinterCreate(
   printer->name               = strdup(printer_name);
   printer->resource           = strdup(resource);
   printer->resourcelen        = strlen(resource);
-  printer->uriname            = printer->resource + 10; // Skip "/ipp/print" in resource
+  if (type == PAPPL_SERVICE_TYPE_SCAN)
+    printer->uriname = printer->resource + 9; // Skip "/ipp/scan" in resource
+  else
+    printer->uriname = printer->resource + 10; // Skip "/ipp/print" in resource
   printer->device_id          = device_id ? strdup(device_id) : NULL;
   printer->device_uri         = strdup(device_uri);
   printer->driver_name        = strdup(driver_name);
@@ -247,8 +276,12 @@ papplPrinterCreate(
 
   // Initialize driver...
   driver_attrs = NULL;
-  _papplPrinterInitPrintDriverData(&driver_data);
+  if (type == PAPPL_SERVICE_TYPE_SCAN)
+    _papplPrinterInitScannerDriverData(&driver_data); // TODO!
+  else
+    _papplPrinterInitPrintDriverData(&driver_data);
 
+  // Driver name must start with "sane_" to populate scanner driver data
   if (!(system->pdriver_cb)(system, driver_name, device_uri, &driver_data, &driver_attrs, system->pdriver_cbdata))
   {
     free_printer(printer);
@@ -328,15 +361,122 @@ papplPrinterCreate(
   // compression-supported
   ippAddStrings(printer->attrs, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_KEYWORD), "compression-supported", (int)(sizeof(compression) / sizeof(compression[0])), NULL, compression);
 
-  // copies-default
+  // copies-default : MUST be 1 for SCAN
   ippAddInteger(printer->attrs, IPP_TAG_PRINTER, IPP_TAG_INTEGER, "copies-default", 1);
 
-  // copies-supported
-  // TODO: filter based on document format
-  ippAddRange(printer->attrs, IPP_TAG_PRINTER, "copies-supported", 1, 999);
+  
+  if (type == PAPPL_SERVICE_TYPE_SCAN)
+  {
+    // copies-supported
+    ippAddRange(printer->attrs, IPP_TAG_PRINTER, "copies-supported", 1, 1);   //Value must be 1 for SCAN
 
-  // document-format-default
-  ippAddString(printer->attrs, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_MIMETYPE), "document-format-default", NULL, "application/octet-stream");
+    // document-format-default
+    ippAddString(printer->attrs, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_MIMETYPE), "document-format-default", NULL, "application/pdf");
+
+    // input-orientation-requested-supported
+    ippAddIntegers(printer->attrs, IPP_TAG_PRINTER, IPP_TAG_ENUM, "input-orientation-requested-supported", (int)(sizeof(orientation_requested) / sizeof(orientation_requested[0])), orientation_requested);
+
+    // destination-uri-schemes-supported
+    ippAddStrings(printer->attrs, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_KEYWORD), "destination-uri-schemes-supported", (int)(sizeof(destination_uri_schemes) / sizeof(destination_uri_schemes[0])), NULL, destination_uri_schemes);
+
+    // multiple-destination-uris-supported
+    ippAddBoolean(printer->attrs, IPP_TAG_PRINTER, "multiple-destination-uris-supported", 0);
+
+    // number-of-retries-supported
+    ippAddRange(printer->attrs, IPP_TAG_PRINTER, "number-of-retries-supported", 0,10);
+
+    // retry-interval-supported
+    ippAddRange(printer->attrs, IPP_TAG_PRINTER, "retry-interval-supported", 0,5);
+
+    // retry-time-out-supported
+    ippAddRange(printer->attrs, IPP_TAG_PRINTER, "retry-time-out-supported", 0,5);
+  }
+  else
+  {
+    // copies-supported
+    // TODO: filter based on document format
+    ippAddRange(printer->attrs, IPP_TAG_PRINTER, "copies-supported", 1, 999);
+
+    // document-format-default
+    ippAddString(printer->attrs, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_MIMETYPE), "document-format-default", NULL, "application/octet-stream");
+    
+    // job-k-octets-supported
+    ippAddRange(printer->attrs, IPP_TAG_PRINTER, "job-k-octets-supported", 0, k_supported);
+
+    // job-priority-default
+    ippAddInteger(printer->attrs, IPP_TAG_PRINTER, IPP_TAG_INTEGER, "job-priority-default", 50);
+
+    // job-priority-supported
+    ippAddInteger(printer->attrs, IPP_TAG_PRINTER, IPP_TAG_INTEGER, "job-priority-supported", 1);
+
+    // job-sheets-default
+    ippAddString(printer->attrs, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_NAME), "job-sheets-default", NULL, "none");
+
+    // job-sheets-supported
+    ippAddString(printer->attrs, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_NAME), "job-sheets-supported", NULL, "none");
+
+    // job-spooling-supported
+    ippAddString(printer->attrs, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_KEYWORD), "job-spooling-supported", NULL, printer->max_active_jobs > 1 ? "spool" : "stream");
+
+    if (_papplSystemFindMIMEFilter(system, "image/jpeg", "image/pwg-raster"))
+    {
+      static const char * const jpeg_features_supported[] =
+      {					// "jpeg-features-supported" values
+        "arithmetic",
+        "cmyk",
+        "progressive"
+      };
+
+      // jpeg-features-supported
+      ippAddStrings(printer->attrs, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_KEYWORD), "jpeg-features-supported", (int)(sizeof(jpeg_features_supported) / sizeof(jpeg_features_supported[0])), NULL, jpeg_features_supported);
+
+      // jpeg-k-octets-supported
+      ippAddRange(printer->attrs, IPP_TAG_PRINTER, "jpeg-k-octets-supported", 0, k_supported);
+
+      // jpeg-x-dimension-supported
+      ippAddRange(printer->attrs, IPP_TAG_PRINTER, "jpeg-x-dimension-supported", 0, 16384);
+
+      // jpeg-y-dimension-supported
+      ippAddRange(printer->attrs, IPP_TAG_PRINTER, "jpeg-y-dimension-supported", 1, 16384);
+
+      // orientation-requested-supported
+      ippAddIntegers(printer->attrs, IPP_TAG_PRINTER, IPP_TAG_ENUM, "orientation-requested-supported", (int)(sizeof(orientation_requested) / sizeof(orientation_requested[0])), orientation_requested);
+
+      if (_papplSystemFindMIMEFilter(system, "application/pdf", "image/pwg-raster"))
+      {
+        static const char * const pdf_versions_supported[] =
+        {					// "pdf-versions-supported" values
+          "adobe-1.3",
+          "adobe-1.4",
+          "adobe-1.5",
+          "adobe-1.6",
+          "iso-32000-1_2008"		// PDF 1.7
+        };
+
+        // max-page-ranges-supported
+        ippAddInteger(printer->attrs, IPP_TAG_PRINTER, IPP_TAG_INTEGER, "max-page-ranges-supported", 1);
+
+        // page-ranges-supported
+        ippAddBoolean(printer->attrs, IPP_TAG_PRINTER, "page-ranges-supported", 1);
+
+        // pdf-k-octets-supported
+        ippAddRange(printer->attrs, IPP_TAG_PRINTER, "pdf-k-octets-supported", 0, k_supported);
+
+        // pdf-versions-supported
+        ippAddStrings(printer->attrs, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_KEYWORD), "pdf-versions-supported", (int)(sizeof(pdf_versions_supported) / sizeof(pdf_versions_supported[0])), NULL, pdf_versions_supported);
+      }
+
+      // pdl-override-supported
+      ippAddString(printer->attrs, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_KEYWORD), "pdl-override-supported", NULL, "attempted");
+
+      // print-content-optimize-supported
+      ippAddStrings(printer->attrs, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_KEYWORD), "print-content-optimize-supported", (int)(sizeof(print_content_optimize) / sizeof(print_content_optimize[0])), NULL, print_content_optimize);
+
+      // print-scaling-supported
+      ippAddStrings(printer->attrs, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_KEYWORD), "print-scaling-supported", (int)(sizeof(print_scaling) / sizeof(print_scaling[0])), NULL, print_scaling);
+
+    }  
+  }
 
   // generated-natural-language-supported
   ippAddString(printer->attrs, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_LANGUAGE), "generated-natural-language-supported", NULL, "en");
@@ -346,46 +486,6 @@ papplPrinterCreate(
 
   // job-ids-supported
   ippAddBoolean(printer->attrs, IPP_TAG_PRINTER, "job-ids-supported", 1);
-
-  // job-k-octets-supported
-  ippAddRange(printer->attrs, IPP_TAG_PRINTER, "job-k-octets-supported", 0, k_supported);
-
-  // job-priority-default
-  ippAddInteger(printer->attrs, IPP_TAG_PRINTER, IPP_TAG_INTEGER, "job-priority-default", 50);
-
-  // job-priority-supported
-  ippAddInteger(printer->attrs, IPP_TAG_PRINTER, IPP_TAG_INTEGER, "job-priority-supported", 1);
-
-  // job-sheets-default
-  ippAddString(printer->attrs, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_NAME), "job-sheets-default", NULL, "none");
-
-  // job-sheets-supported
-  ippAddString(printer->attrs, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_NAME), "job-sheets-supported", NULL, "none");
-
-  // job-spooling-supported
-  ippAddString(printer->attrs, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_KEYWORD), "job-spooling-supported", NULL, printer->max_active_jobs > 1 ? "spool" : "stream");
-
-  if (_papplSystemFindMIMEFilter(system, "image/jpeg", "image/pwg-raster"))
-  {
-    static const char * const jpeg_features_supported[] =
-    {					// "jpeg-features-supported" values
-      "arithmetic",
-      "cmyk",
-      "progressive"
-    };
-
-    // jpeg-features-supported
-    ippAddStrings(printer->attrs, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_KEYWORD), "jpeg-features-supported", (int)(sizeof(jpeg_features_supported) / sizeof(jpeg_features_supported[0])), NULL, jpeg_features_supported);
-
-    // jpeg-k-octets-supported
-    ippAddRange(printer->attrs, IPP_TAG_PRINTER, "jpeg-k-octets-supported", 0, k_supported);
-
-    // jpeg-x-dimension-supported
-    ippAddRange(printer->attrs, IPP_TAG_PRINTER, "jpeg-x-dimension-supported", 0, 16384);
-
-    // jpeg-y-dimension-supported
-    ippAddRange(printer->attrs, IPP_TAG_PRINTER, "jpeg-y-dimension-supported", 1, 16384);
-  }
 
   // multiple-document-handling-supported
   ippAddStrings(printer->attrs, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_KEYWORD), "multiple-document-handling-supported", sizeof(multiple_document_handling) / sizeof(multiple_document_handling[0]), NULL, multiple_document_handling);
@@ -405,44 +505,8 @@ papplPrinterCreate(
   // operations-supported
   ippAddIntegers(printer->attrs, IPP_TAG_PRINTER, IPP_TAG_ENUM, "operations-supported", (int)(sizeof(operations) / sizeof(operations[0])), operations);
 
-  // orientation-requested-supported
-  ippAddIntegers(printer->attrs, IPP_TAG_PRINTER, IPP_TAG_ENUM, "orientation-requested-supported", (int)(sizeof(orientation_requested) / sizeof(orientation_requested[0])), orientation_requested);
-
-  if (_papplSystemFindMIMEFilter(system, "application/pdf", "image/pwg-raster"))
-  {
-    static const char * const pdf_versions_supported[] =
-    {					// "pdf-versions-supported" values
-      "adobe-1.3",
-      "adobe-1.4",
-      "adobe-1.5",
-      "adobe-1.6",
-      "iso-32000-1_2008"		// PDF 1.7
-    };
-
-    // max-page-ranges-supported
-    ippAddInteger(printer->attrs, IPP_TAG_PRINTER, IPP_TAG_INTEGER, "max-page-ranges-supported", 1);
-
-    // page-ranges-supported
-    ippAddBoolean(printer->attrs, IPP_TAG_PRINTER, "page-ranges-supported", 1);
-
-    // pdf-k-octets-supported
-    ippAddRange(printer->attrs, IPP_TAG_PRINTER, "pdf-k-octets-supported", 0, k_supported);
-
-    // pdf-versions-supported
-    ippAddStrings(printer->attrs, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_KEYWORD), "pdf-versions-supported", (int)(sizeof(pdf_versions_supported) / sizeof(pdf_versions_supported[0])), NULL, pdf_versions_supported);
-  }
-
-  // pdl-override-supported
-  ippAddString(printer->attrs, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_KEYWORD), "pdl-override-supported", NULL, "attempted");
-
-  // print-content-optimize-supported
-  ippAddStrings(printer->attrs, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_KEYWORD), "print-content-optimize-supported", (int)(sizeof(print_content_optimize) / sizeof(print_content_optimize[0])), NULL, print_content_optimize);
-
   // print-quality-supported
   ippAddIntegers(printer->attrs, IPP_TAG_PRINTER, IPP_TAG_ENUM, "print-quality-supported", (int)(sizeof(print_quality) / sizeof(print_quality[0])), print_quality);
-
-  // print-scaling-supported
-  ippAddStrings(printer->attrs, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_KEYWORD), "print-scaling-supported", (int)(sizeof(print_scaling) / sizeof(print_scaling[0])), NULL, print_scaling);
 
   // printer-device-id
   if (printer->device_id)

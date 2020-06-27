@@ -345,6 +345,70 @@ typedef struct pappl_psupply_s		// Supply data
   pappl_supply_type_t	type;			// Type
 } pappl_supply_t;
 
+enum pappl_scan_color_modes			// IPP "input-color-mode" bit values extended for
+{
+  PAPPL_SCAN_COLOR_MODE_AUTO = 0x01,			// 'auto': 
+  PAPPL_SCAN_COLOR_MODE_BILEVEL = 0x02,		// 'bi-level': 
+  PAPPL_SCAN_COLOR_MODE_COLOR = 0x04,			// 'color': 
+  PAPPL_SCAN_COLOR_MODE_MONO_4= 0x08,			// 'monochrome_4': 
+  PAPPL_SCAN_COLOR_MODE_MONO_8 = 0x10			// 'monochrome_8': 
+  PAPPL_SCAN_COLOR_MODE_MONO_16 = 0x20,			// 'monochrome_16':
+  PAPPL_SCAN_COLOR_MODE_MONO = 0x40,		// 'monochrome':
+  PAPPL_SCAN_COLOR_MODE_COLOR_8 = 0x80,			// 'color_8': 
+  PAPPL_SCAN_COLOR_MODE_RGBA_8 = 0x100,			// 'rgba_8': 
+  PAPPL_SCAN_COLOR_MODE_RGB_16 = 0x200			// 'rgb_16':
+  PAPPL_SCAN_COLOR_MODE_RGBA_16 = 0x400,			// 'rgba_16': 
+  PAPPL_SCAN_COLOR_MODE_CMYK_8 = 0x800,		// 'cmyk_8': 
+  PAPPL_SCAN_COLOR_MODE_CMYK_16 = 0x1000,			// 'cmyk_16': 
+};
+typedef unsigned pappl_scan_color_modes_t;	// Bitfield for IPP "input-color-mode" values for scan
+
+enum pappl_scan_content_type			// IPP "input-content-type" bit values
+{
+  PAPPL_SCAN_CONTENT_TYPE_AUTO = 0x01,			// 'auto': automatically determine the type of document
+  PAPPL_SCAN_CONTENT_TYPE_HALFTONE = 0x02,		// 'halftone': automatically determine the type of document
+  PAPPL_SCAN_CONTENT_TYPE_LINEART = 0x04,			// 'line-art': the document contains line art
+  PAPPL_SCAN_CONTENT_TYPE_MAGAZINE= 0x08,			// 'magazine': the document is a magazine
+  PAPPL_SCAN_CONTENT_TYPE_PHOTO = 0x10			// 'photo': the document is a photograph
+  PAPPL_SCAN_CONTENT_TYPE_TEXT = 0x20,			// 'text': the document only contains text
+  PAPPL_SCAN_CONTENT_TYPE_TEXT_PHOTO = 0x40,		// 'text-and-photo': the document contains a combination of text and photographs
+};
+typedef unsigned pappl_scan_content_type_t;	// Bitfield for IPP "input-content-type" values for scan
+
+enum pappl_scan_film			// IPP "input-film-scan-mode" bit values
+{
+  PAPPL_SCAN_FILM_BW_NEG = 0x01,			// 'black-and-white-negative-film': The film is black-and-white negatives
+  PAPPL_SCAN_FILM_COLOR_NEG = 0x02,		// 'color-negative-film': The film is color negatives
+  PAPPL_SCAN_FILM_COLOR_SLIDE = 0x04,			// 'color-slide-film': The film is color slides (positives)
+  PAPPL_SCAN_FILM_NA = 0x08,			// 'not-applicable': The type of film is not applicable to the usage
+};
+typedef unsigned pappl_scan_film_t;	// Bitfield for IPP "input-film-scan-mode" values for scan
+
+typedef struct pappl_scan_region_s		// "input-scan-regions" values
+{
+  int   x_origin;   // "x-origin" values in 1/2540th of an inch.
+  int   x_dim;   // "x-dim" values in 1/2540th of an inch.
+  int   y_origin;   // "y-origin" values in 1/2540th of an inch.
+  int   y_dim;   // "y-dim" values in 1/2540th of an inch.
+} pappl_scan_region_t;
+
+enum pappl_scan_input_source			// IPP "input-source" bit values
+{
+  PAPPL_SCAN_INPUT_SOURCE_ADF = 0x01,			// 'adf': scans documents from the auto-document feeder
+  PAPPL_SCAN_INPUT_SOURCE_FILM_READER = 0x02,		// 'film-reader': scans documents from a microfilm reader
+  PAPPL_SCAN_INPUT_SOURCE_PLATEN = 0x04,			// 'platen': scans a single page document from the scanner glass or platen
+};
+typedef unsigned pappl_scan_input_source_t;	// Bitfield for IPP "input-film-scan-mode" values for scan
+
+typedef struct pappl_scan_region_s		// "input-scan-regions" values
+{
+  int   x_origin;   // "x-origin" values in 1/2540th of an inch.
+  int   x_dim;   // "x-dim" values in 1/2540th of an inch.
+  int   y_origin;   // "y-origin" values in 1/2540th of an inch.
+  int   y_dim;   // "y-dim" values in 1/2540th of an inch.
+} pappl_scan_region_t;
+
+
 struct pappl_pdriver_data_s		// Print driver data
 {
   pappl_identfunc_t	identify;		// Identify-Printer function
@@ -358,25 +422,25 @@ struct pappl_pdriver_data_s		// Print driver data
   pappl_dither_t	gdither;		// 'auto', 'text', and 'graphic' dither array
   pappl_dither_t	pdither;		// 'photo' dither array
   const char		*format;		// Printer-specific format
-  char			make_and_model[128];	// "printer-make-and-model" value
+  char			make_and_model[128];	// "printer-make-and-model" value | "printer-make-and-model" values for scan
   int			ppm,			// "pages-per-minute" value
 			ppm_color;		// "pages-per-minute-color" value, if any
-  pappl_icon_t		icons[3];		// "printer-icons" values
+  pappl_icon_t		icons[3];		// "printer-icons" values | "printer-icons" values for scan
   pappl_kind_t		kind;			// "printer-kind" values
   bool			has_supplies,		// Printer has supplies to report
 			input_face_up,		// Does input media come in face-up?
 			output_face_up;		// Does output media come out face-up?
-  ipp_orient_t		orient_default;		// "orientation-requested-default" value
+  ipp_orient_t		orient_default;		// "orientation-requested-default" value | "input-orientation-requested" default value for scan
   pappl_color_mode_t	color_supported,	// "print-color-mode" values
 			color_default;		// "print-color-mode-default" value
   pappl_content_t	content_default;	// "print-content-default" value
-  ipp_quality_t		quality_default;	// "print-quality-default" value
+  ipp_quality_t		quality_default;	// "print-quality-default" value | "input-quality" default for scan
   pappl_scaling_t	scaling_default;	// "print-scaling-default" value
   pappl_raster_type_t	raster_types;		// "pwg-raster-document-type-supported" values
   pappl_raster_type_t	force_raster_type;	// Force a particular raster type?
   pappl_duplex_t	duplex;			// Duplex printing modes supported
-  pappl_sides_t		sides_supported,	// "sides-supported" values
-			sides_default;		// "sides-default" value
+  pappl_sides_t		sides_supported,	// "sides-supported" values | "input-sides" supported for scan
+			sides_default;		// "sides-default" value  | "input-sides" supported for scan
   pappl_finishings_t	finishings;		// "finishings-supported" values
   int			num_resolution,		// Number of printer resolutions
 			x_resolution[PAPPL_MAX_RESOLUTION],
@@ -424,6 +488,28 @@ struct pappl_pdriver_data_s		// Print driver data
   int			num_vendor;		// Number of vendor attributes
   const char		*vendor[PAPPL_MAX_VENDOR];
 						// Vendor attribute names
+  // Default Scanner Specific Attributes
+  bool    scan_color_supported;  // "color-supported" value
+  bool    input_auto_exposure_default,    // "input-auto-exposure" default values
+      input_auto_scaling_default,   // "input-auto-scaling" default values
+      input_auto_skew_correction_default;   // "input-auto-skew-correction" default values
+  int    input_brightness_default;   // "input-brightness" default values (-100,100)
+  pappl_scan_color_modes_t    input_color_mode_default;    // "input-color-mode" default values for scanner
+  pappl_scan_content_type_t   input_content_type_default;   // "input-content-type" default values 
+  int   input_contrast_default;   //  "input_contrast" default values (-100,100)
+  pappl_scan_film_t   input_film_scan_mode_default;   // "input-film-scan-mode" default values 
+  int   input_images_to_transfer_default,    // "input-images-to-transfer" default values
+      input_scaling_height_default,   // "input-scaling-height" default values (1,1000)
+      input_scaling_width_default;   // "input-scaling-width" default values (1,1000)
+  pappl_scan_region_t   input_scan_regions_default;   // "input-scan-regions" default value
+  int   input_sharpness_default;    // "input-sharpness" default value in (-100:100)
+  pappl_scan_input_source_t   input_source_default;   //  "input-source" default value
+  int   number_of_retries_default,    // "number-of-retries" default value
+      noise_removal_default,    // output-attributes - "noise-removal" default value (0,100)
+      output_compression_quality_factor_default,    // output-attributes - "output-compression-quality-factor" default value (0,100)
+      retry_interval_default,   // "retry-interval" default values 
+      retry_time_out_default;   // "retry-time-out" default values
+  pwg_media_t   default_media;    // "input-media" default values 
 };
 
 

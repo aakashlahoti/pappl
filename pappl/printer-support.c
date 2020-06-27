@@ -28,6 +28,22 @@ static const char * const pappl_color_modes[] =
   "process-monochrome"
 };
 
+static const char * const pappl_scan_color_modes[] =
+{
+  "bi-level" 
+  "color"
+  "monochrome_4"
+  "monochrome_8" 
+  "monochrome_16"
+  "monochrome"
+  "color_8"
+  "rgba_8"
+  "rgb_16"
+  "rgba_16" 
+  "cmyk_8"
+  "cmyk_16"
+};
+
 static const char * const pappl_contents[] =
 {
   "auto",
@@ -239,6 +255,13 @@ static const char * const pappl_supply_types[] =
   "water"
 };
 
+static const char * const pappl_scan_source[] =
+{
+  "adf",
+  "film-reader",
+  "platen"
+}
+
 
 //
 // '_papplColorModeString()' - Return the keyword value associated with the IPP "print-color-mode" bit value.
@@ -251,6 +274,17 @@ _papplColorModeString(
   return (_PAPPL_LOOKUP_STRING(value, pappl_color_modes));
 }
 
+
+//
+// '_papplScanColorModeString()' - Return the keyword value associated with the IPP "input-color-mode" bit value.
+//
+
+const char *				// O - IPP "input-color-mode" keyword value
+_papplScanColorModeString(
+      pappl_color_mode_t value)		// I - IPP "input-color-mode" bit value
+{
+  return (_PAPPL_LOOKUP_STRING(value, pappl_scan_color_modes));
+}
 
 //
 // '_papplColorModeValue()' - Return the bit value associated with the IPP "print-color-mode" keyword value.
@@ -346,6 +380,18 @@ _papplKindString(
     pappl_kind_t value)			// I - IPP "printer-kind" bit value
 {
   return (_PAPPL_LOOKUP_STRING(value, pappl_kinds));
+}
+
+
+//
+// '_papplSourceString()' - Return the source value associated with the IPP "input-source" bit value.
+//
+
+const char *				// O - IPP "input-source" keyword value
+_papplSourceString(
+    pappl_scan_input_source_t value)			// I - IPP "input-source" bit value
+{
+  return (_PAPPL_LOOKUP_STRING(value, pappl_scan_source));
 }
 
 

@@ -76,6 +76,13 @@ static const char * const pwg_common_media[] =
   "custom_min_3x5in"
 };
 
+static const char * const pwg_scan_common_media[] =
+{					// Supported media sizes for common scanner
+
+  "na_letter_8.5x11in",
+  "iso_a4_210x297mm"
+};
+
 
 //
 // Local functions...
@@ -133,7 +140,10 @@ test_setup_drivers(
 
 
 //
-// 'pwg_callback()' - Driver callback.
+// 'pwg_callback()' - Common printer/scanner driver callback.
+//                    
+// The function expects that scanner driver names begin with "sane_".
+// This is important to distinguish them from printer drivers
 //
 
 static bool				// O - `true` on success, `false` on failure
@@ -166,217 +176,277 @@ pwg_callback(
     return (false);
   }
 
-  if (strstr(driver_name, "-black_1"))
+  if (!strstr(driver_name, "sane_"))
   {
-    driver_data->raster_types = PAPPL_PWG_RASTER_TYPE_BLACK_1 | PAPPL_PWG_RASTER_TYPE_BLACK_8 | PAPPL_PWG_RASTER_TYPE_SGRAY_8;
-    driver_data->force_raster_type = PAPPL_PWG_RASTER_TYPE_BLACK_1;
-  }
-  else if (strstr(driver_name, "-sgray_8"))
-  {
-    driver_data->raster_types = PAPPL_PWG_RASTER_TYPE_BLACK_1 | PAPPL_PWG_RASTER_TYPE_BLACK_8 | PAPPL_PWG_RASTER_TYPE_SGRAY_8;
-  }
-  else if (strstr(driver_name, "-srgb_8"))
-  {
-    driver_data->raster_types = PAPPL_PWG_RASTER_TYPE_BLACK_1 | PAPPL_PWG_RASTER_TYPE_BLACK_8 | PAPPL_PWG_RASTER_TYPE_SGRAY_8 | PAPPL_PWG_RASTER_TYPE_SRGB_8;
+    if (strstr(driver_name, "-black_1"))
+    {
+      driver_data->raster_types = PAPPL_PWG_RASTER_TYPE_BLACK_1 | PAPPL_PWG_RASTER_TYPE_BLACK_8 | PAPPL_PWG_RASTER_TYPE_SGRAY_8;
+      driver_data->force_raster_type = PAPPL_PWG_RASTER_TYPE_BLACK_1;
+    }
+    else if (strstr(driver_name, "-sgray_8"))
+    {
+      driver_data->raster_types = PAPPL_PWG_RASTER_TYPE_BLACK_1 | PAPPL_PWG_RASTER_TYPE_BLACK_8 | PAPPL_PWG_RASTER_TYPE_SGRAY_8;
+    }
+    else if (strstr(driver_name, "-srgb_8"))
+    {
+      driver_data->raster_types = PAPPL_PWG_RASTER_TYPE_BLACK_1 | PAPPL_PWG_RASTER_TYPE_BLACK_8 | PAPPL_PWG_RASTER_TYPE_SGRAY_8 | PAPPL_PWG_RASTER_TYPE_SRGB_8;
+    }
+    else
+    {
+      papplLog(system, PAPPL_LOGLEVEL_ERROR, "Unsupported driver name '%s'.", driver_name);
+      return (false);
+    }
+
+    driver_data->identify           = pwg_identify;
+    driver_data->identify_default   = PAPPL_IDENTIFY_ACTIONS_SOUND;
+    driver_data->identify_supported = PAPPL_IDENTIFY_ACTIONS_DISPLAY | PAPPL_IDENTIFY_ACTIONS_SOUND;
+    driver_data->print              = pwg_print;
+    driver_data->rendjob            = pwg_rendjob;
+    driver_data->rendpage           = pwg_rendpage;
+    driver_data->rstartjob          = pwg_rstartjob;
+    driver_data->rstartpage         = pwg_rstartpage;
+    driver_data->rwrite             = pwg_rwrite;
+    driver_data->status             = pwg_status;
+    driver_data->format             = "image/pwg-raster";
+    driver_data->orient_default     = IPP_ORIENT_NONE;
+    driver_data->quality_default    = IPP_QUALITY_NORMAL;
+
+    driver_data->num_resolution = 0;
+    if (strstr(driver_name, "-203dpi"))
+    {
+      driver_data->x_resolution[driver_data->num_resolution   ] = 203;
+      driver_data->y_resolution[driver_data->num_resolution ++] = 203;
+      driver_data->x_default = driver_data->y_default           = 203;
+    }
+    if (strstr(driver_name, "-300dpi"))
+    {
+      driver_data->x_resolution[driver_data->num_resolution   ] = 300;
+      driver_data->y_resolution[driver_data->num_resolution ++] = 300;
+      driver_data->x_default = driver_data->y_default           = 300;
+    }
+    if (strstr(driver_name, "-600dpi"))
+    {
+      driver_data->x_resolution[driver_data->num_resolution   ] = 600;
+      driver_data->y_resolution[driver_data->num_resolution ++] = 600;
+      driver_data->x_default = driver_data->y_default           = 600;
+    }
+    if (driver_data->num_resolution == 0)
+    {
+      papplLog(system, PAPPL_LOGLEVEL_ERROR, "No resolution information in driver name '%s'.", driver_name);
+      return (false);
+    }
+
+    if (!strncmp(driver_name, "pwg_2inch-", 10))
+    {
+      strlcpy(driver_data->make_and_model, "PWG 2-inch Label Printer", sizeof(driver_data->make_and_model));
+
+      driver_data->kind       = PAPPL_KIND_LABEL | PAPPL_KIND_ROLL;
+      driver_data->ppm        = 20;	// 20 labels per minute
+      driver_data->left_right = 312;	// 1/16" left and right
+      driver_data->bottom_top = 625;	// 1/8" top and bottom
+
+      driver_data->num_media = (int)(sizeof(pwg_2inch_media) / sizeof(pwg_2inch_media[0]));
+      memcpy(driver_data->media, pwg_2inch_media, sizeof(pwg_2inch_media));
+
+      driver_data->num_source = 1;
+      driver_data->source[0]  = "main-roll";
+
+      strlcpy(driver_data->media_ready[0].size_name, "oe_address-label_1.25x3.5in", sizeof(driver_data->media_ready[0].size_name));
+
+      driver_data->darkness_configured = 53;
+      driver_data->darkness_supported  = 16;
+      driver_data->speed_supported[1]  = 8 * 2540;
+    }
+    else if (!strncmp(driver_name, "pwg_4inch-", 10))
+    {
+      strlcpy(driver_data->make_and_model, "PWG 4-inch Label Printer", sizeof(driver_data->make_and_model));
+
+      driver_data->kind       = PAPPL_KIND_LABEL | PAPPL_KIND_ROLL;
+      driver_data->ppm        = 20;	// 20 labels per minute
+      driver_data->left_right = 0;	// Borderless left and right
+      driver_data->bottom_top = 0;	// Borderless top and bottom
+
+      driver_data->num_media = (int)(sizeof(pwg_4inch_media) / sizeof(pwg_4inch_media[0]));
+      memcpy(driver_data->media, pwg_4inch_media, sizeof(pwg_4inch_media));
+
+      driver_data->num_source = 2;
+      driver_data->source[0]  = "main-roll";
+      driver_data->source[1]  = "alternate-roll";
+
+      strlcpy(driver_data->media_ready[0].size_name, "na_index-4x6_4x6in", sizeof(driver_data->media_ready[0].size_name));
+      strlcpy(driver_data->media_ready[1].size_name, "oe_address-label_1.25x3.5in", sizeof(driver_data->media_ready[1].size_name));
+
+      driver_data->darkness_configured = 53;
+      driver_data->darkness_supported  = 16;
+      driver_data->speed_supported[1]  = 8 * 2540;
+    }
+    else if (!strncmp(driver_name, "pwg_common-", 11))
+    {
+      strlcpy(driver_data->make_and_model, "PWG Office Printer", sizeof(driver_data->make_and_model));
+
+      driver_data->has_supplies = true;
+      driver_data->kind         = PAPPL_KIND_DOCUMENT | PAPPL_KIND_PHOTO | PAPPL_KIND_POSTCARD;
+      driver_data->ppm          = 5;	// 5 mono pages per minute
+      driver_data->ppm_color    = 2;	// 2 color pages per minute
+      driver_data->left_right   = 423;	// 1/6" left and right
+      driver_data->bottom_top   = 423;	// 1/6" top and bottom
+      driver_data->borderless   = true;	// Also borderless sizes
+
+      driver_data->finishings = PAPPL_FINISHINGS_PUNCH | PAPPL_FINISHINGS_STAPLE;
+
+      driver_data->num_media = (int)(sizeof(pwg_common_media) / sizeof(pwg_common_media[0]));
+      memcpy(driver_data->media, pwg_common_media, sizeof(pwg_common_media));
+
+      driver_data->num_source = 4;
+      driver_data->source[0]  = "main";
+      driver_data->source[1]  = "alternate";
+      driver_data->source[2]  = "manual";
+      driver_data->source[3]  = "by-pass-tray";
+
+      strlcpy(driver_data->media_ready[0].size_name, "na_letter_8.5x11in", sizeof(driver_data->media_ready[0].size_name));
+      strlcpy(driver_data->media_ready[1].size_name, "iso_a4_210x297mm", sizeof(driver_data->media_ready[1].size_name));
+
+      driver_data->sides_supported = PAPPL_SIDES_ONE_SIDED | PAPPL_SIDES_TWO_SIDED_LONG_EDGE | PAPPL_SIDES_TWO_SIDED_SHORT_EDGE;
+      driver_data->sides_default   = PAPPL_SIDES_TWO_SIDED_LONG_EDGE;
+    }
+    else
+    {
+      papplLog(system, PAPPL_LOGLEVEL_ERROR, "No dimension information in driver name '%s'.", driver_name);
+      return (false);
+    }
+
+    if (!strncmp(driver_name, "pwg_common-", 11))
+    {
+      driver_data->color_supported = PAPPL_COLOR_MODE_AUTO | PAPPL_COLOR_MODE_AUTO_MONOCHROME | PAPPL_COLOR_MODE_COLOR | PAPPL_COLOR_MODE_MONOCHROME;
+      driver_data->color_default   = PAPPL_COLOR_MODE_AUTO;
+
+      driver_data->num_type = 8;
+      driver_data->type[0]  = "stationery";
+      driver_data->type[1]  = "stationery-letterhead";
+      driver_data->type[2]  = "labels";
+      driver_data->type[3]  = "photographic";
+      driver_data->type[4]  = "photographic-glossy";
+      driver_data->type[5]  = "photographic-matte";
+      driver_data->type[6]  = "transparency";
+      driver_data->type[7]  = "envelope";
+
+      driver_data->media_default.bottom_margin = driver_data->bottom_top;
+      driver_data->media_default.left_margin   = driver_data->left_right;
+      driver_data->media_default.right_margin  = driver_data->left_right;
+      driver_data->media_default.size_width    = 21590;
+      driver_data->media_default.size_length   = 27940;
+      driver_data->media_default.top_margin    = driver_data->bottom_top;
+      strlcpy(driver_data->media_default.size_name, "na_letter_8.5x11in", sizeof(driver_data->media_default.size_name));
+      strlcpy(driver_data->media_default.source, "main", sizeof(driver_data->media_default.source));
+      strlcpy(driver_data->media_default.type, "stationery", sizeof(driver_data->media_default.type));
+    }
+    else
+    {
+      driver_data->color_supported = PAPPL_COLOR_MODE_AUTO | PAPPL_COLOR_MODE_MONOCHROME;
+      driver_data->color_default   = PAPPL_COLOR_MODE_MONOCHROME;
+
+      memset(driver_data->gdither, 127, sizeof(driver_data->gdither));
+
+      driver_data->icons[0].data    = label_sm_png;
+      driver_data->icons[0].datalen = sizeof(label_sm_png);
+      driver_data->icons[1].data    = label_md_png;
+      driver_data->icons[1].datalen = sizeof(label_md_png);
+      driver_data->icons[2].data    = label_lg_png;
+      driver_data->icons[2].datalen = sizeof(label_lg_png);
+
+      driver_data->top_offset_supported[0] = -2000;
+      driver_data->top_offset_supported[1] = 2000;
+
+      driver_data->tracking_supported = PAPPL_MEDIA_TRACKING_MARK | PAPPL_MEDIA_TRACKING_CONTINUOUS;
+
+      driver_data->num_type = 3;
+      driver_data->type[0]  = "labels";
+      driver_data->type[1]  = "continuous";
+      driver_data->type[2]  = "labels-continuous";
+
+      driver_data->sides_supported = PAPPL_SIDES_ONE_SIDED;
+      driver_data->sides_default   = PAPPL_SIDES_ONE_SIDED;
+    }
+
+    // Fill out ready and default media (default == ready media from the first source)
+    for (i = 0; i < driver_data->num_source; i ++)
+    {
+      pwg_media_t *pwg = pwgMediaForPWG(driver_data->media_ready[i].size_name);
+
+      if (pwg)
+      {
+        driver_data->media_ready[i].bottom_margin = driver_data->bottom_top;
+        driver_data->media_ready[i].left_margin   = driver_data->left_right;
+        driver_data->media_ready[i].right_margin  = driver_data->left_right;
+        driver_data->media_ready[i].size_width    = pwg->width;
+        driver_data->media_ready[i].size_length   = pwg->length;
+        driver_data->media_ready[i].top_margin    = driver_data->bottom_top;
+        driver_data->media_ready[i].tracking      = PAPPL_MEDIA_TRACKING_MARK;
+        strlcpy(driver_data->media_ready[i].source, driver_data->source[i], sizeof(driver_data->media_ready[i].source));
+        strlcpy(driver_data->media_ready[i].type, driver_data->type[0], sizeof(driver_data->media_ready[i].type));
+      }
+    }
+
+    driver_data->media_default = driver_data->media_ready[0];
   }
   else
   {
-    papplLog(system, PAPPL_LOGLEVEL_ERROR, "Unsupported driver name '%s'.", driver_name);
-    return (false);
-  }
+    strlcpy(driver_data->make_and_model, "PWG Common_Scanner", sizeof(driver_data->make_and_model));
+    
+    driver_data->icons[0].data    = label_sm_png;
+    driver_data->icons[0].datalen = sizeof(label_sm_png);
 
-  driver_data->identify           = pwg_identify;
-  driver_data->identify_default   = PAPPL_IDENTIFY_ACTIONS_SOUND;
-  driver_data->identify_supported = PAPPL_IDENTIFY_ACTIONS_DISPLAY | PAPPL_IDENTIFY_ACTIONS_SOUND;
-  driver_data->print              = pwg_print;
-  driver_data->rendjob            = pwg_rendjob;
-  driver_data->rendpage           = pwg_rendpage;
-  driver_data->rstartjob          = pwg_rstartjob;
-  driver_data->rstartpage         = pwg_rstartpage;
-  driver_data->rwrite             = pwg_rwrite;
-  driver_data->status             = pwg_status;
-  driver_data->format             = "image/pwg-raster";
-  driver_data->orient_default     = IPP_ORIENT_NONE;
-  driver_data->quality_default    = IPP_QUALITY_NORMAL;
+    pwg_media_t *pwg = pwgMediaForPWG(pwg_scan_common_media[1]);
+    if (pwg)
+    {
+      driver_data->default_media.pwg      = pwg->pwg
+      driver_data->default_media.legacy   = pwg->legacy
+      driver_data->default_media.ppd      = pwg->ppd
+      driver_data->default_media.width    = pwg->width;
+      driver_data->default_media.length   = pwg->length;
+    }
 
-  driver_data->num_resolution = 0;
-  if (strstr(driver_name, "-203dpi"))
-  {
-    driver_data->x_resolution[driver_data->num_resolution   ] = 203;
-    driver_data->y_resolution[driver_data->num_resolution ++] = 203;
-    driver_data->x_default = driver_data->y_default           = 203;
-  }
-  if (strstr(driver_name, "-300dpi"))
-  {
-    driver_data->x_resolution[driver_data->num_resolution   ] = 300;
+    driver_data->num_media = (int)(sizeof(pwg_scan_common_media) / sizeof(pwg_scan_common_media[0]));
+    memcpy(driver_data->media, pwg_scan_common_media, sizeof(pwg_scan_common_media));
+
+    driver_data->sides_supported                              = PAPPL_SIDES_ONE_SIDED | PAPPL_SIDES_TWO_SIDED_LONG_EDGE | PAPPL_SIDES_TWO_SIDED_SHORT_EDGE;
+    driver_data->sides_default                                = PAPPL_SIDES_ONE_SIDED;
+    driver_data->scan_color_supported                         = false;
+    driver_data->input_auto_exposure_default                  = false;    
+    driver_data->input_auto_scaling_default                   = false;   
+    driver_data->input_auto_skew_correction_default           = false;   
+    driver_data->input_brightness_default                     = 0;  
+    driver_data->input_color_mode_default                     = PAPPL_SCAN_COLOR_MODE_MONO_8;
+    driver_data->input_content_type_default                   = PAPPL_SCAN_CONTENT_TYPE_TEXT;
+    driver_data->input_contrast_default                       = 0;   
+    driver_data->input_film_scan_mode_default                 = PAPPL_SCAN_FILM_NA; 
+    driver_data->input_images_to_transfer_default             = 0;   
+    driver_data->input_scaling_height_default                 = 1;  
+    driver_data->input_scaling_width_default                  = 1;   
+    driver_data->input_scan_regions_default.x_origin          = 0;
+    driver_data->input_scan_regions_default.x_dim             = driver_data->default_media.width;
+    driver_data->input_scan_regions_default.y_origin          = 0;
+    driver_data->input_scan_regions_default.y_dim             = driver_data->default_media.length;
+    driver_data->input_sharpness_default                      = 0;    
+    driver_data->input_source_default                         = PAPPL_SCAN_INPUT_SOURCE_PLATEN;  
+    driver_data->number_of_retries_default                    = 0;    
+    driver_data->noise_removal_default                        = 0;    
+    driver_data->output_compression_quality_factor_default    = 100;    
+    driver_data->retry_interval_default                       = 1; 
+    driver_data->retry_time_out_default                       = 5;
+
+    driver_data->orient_default     = IPP_ORIENT_NONE;
+    driver_data->quality_default    = IPP_QUALITY_NORMAL;  
+
+    driver_data->identify           = pwg_identify;
+    driver_data->identify_default   = PAPPL_IDENTIFY_ACTIONS_SOUND;
+    driver_data->identify_supported = PAPPL_IDENTIFY_ACTIONS_DISPLAY | PAPPL_IDENTIFY_ACTIONS_SOUND; 
+
+    driver_data->num_resolution = 0;
+    driver_data->x_resolution[driver_data->num_resolution]    = 300;
     driver_data->y_resolution[driver_data->num_resolution ++] = 300;
     driver_data->x_default = driver_data->y_default           = 300;
   }
-  if (strstr(driver_name, "-600dpi"))
-  {
-    driver_data->x_resolution[driver_data->num_resolution   ] = 600;
-    driver_data->y_resolution[driver_data->num_resolution ++] = 600;
-    driver_data->x_default = driver_data->y_default           = 600;
-  }
-  if (driver_data->num_resolution == 0)
-  {
-    papplLog(system, PAPPL_LOGLEVEL_ERROR, "No resolution information in driver name '%s'.", driver_name);
-    return (false);
-  }
-
-  if (!strncmp(driver_name, "pwg_2inch-", 10))
-  {
-    strlcpy(driver_data->make_and_model, "PWG 2-inch Label Printer", sizeof(driver_data->make_and_model));
-
-    driver_data->kind       = PAPPL_KIND_LABEL | PAPPL_KIND_ROLL;
-    driver_data->ppm        = 20;	// 20 labels per minute
-    driver_data->left_right = 312;	// 1/16" left and right
-    driver_data->bottom_top = 625;	// 1/8" top and bottom
-
-    driver_data->num_media = (int)(sizeof(pwg_2inch_media) / sizeof(pwg_2inch_media[0]));
-    memcpy(driver_data->media, pwg_2inch_media, sizeof(pwg_2inch_media));
-
-    driver_data->num_source = 1;
-    driver_data->source[0]  = "main-roll";
-
-    strlcpy(driver_data->media_ready[0].size_name, "oe_address-label_1.25x3.5in", sizeof(driver_data->media_ready[0].size_name));
-
-    driver_data->darkness_configured = 53;
-    driver_data->darkness_supported  = 16;
-    driver_data->speed_supported[1]  = 8 * 2540;
-  }
-  else if (!strncmp(driver_name, "pwg_4inch-", 10))
-  {
-    strlcpy(driver_data->make_and_model, "PWG 4-inch Label Printer", sizeof(driver_data->make_and_model));
-
-    driver_data->kind       = PAPPL_KIND_LABEL | PAPPL_KIND_ROLL;
-    driver_data->ppm        = 20;	// 20 labels per minute
-    driver_data->left_right = 0;	// Borderless left and right
-    driver_data->bottom_top = 0;	// Borderless top and bottom
-
-    driver_data->num_media = (int)(sizeof(pwg_4inch_media) / sizeof(pwg_4inch_media[0]));
-    memcpy(driver_data->media, pwg_4inch_media, sizeof(pwg_4inch_media));
-
-    driver_data->num_source = 2;
-    driver_data->source[0]  = "main-roll";
-    driver_data->source[1]  = "alternate-roll";
-
-    strlcpy(driver_data->media_ready[0].size_name, "na_index-4x6_4x6in", sizeof(driver_data->media_ready[0].size_name));
-    strlcpy(driver_data->media_ready[1].size_name, "oe_address-label_1.25x3.5in", sizeof(driver_data->media_ready[1].size_name));
-
-    driver_data->darkness_configured = 53;
-    driver_data->darkness_supported  = 16;
-    driver_data->speed_supported[1]  = 8 * 2540;
-  }
-  else if (!strncmp(driver_name, "pwg_common-", 11))
-  {
-    strlcpy(driver_data->make_and_model, "PWG Office Printer", sizeof(driver_data->make_and_model));
-
-    driver_data->has_supplies = true;
-    driver_data->kind         = PAPPL_KIND_DOCUMENT | PAPPL_KIND_PHOTO | PAPPL_KIND_POSTCARD;
-    driver_data->ppm          = 5;	// 5 mono pages per minute
-    driver_data->ppm_color    = 2;	// 2 color pages per minute
-    driver_data->left_right   = 423;	// 1/6" left and right
-    driver_data->bottom_top   = 423;	// 1/6" top and bottom
-    driver_data->borderless   = true;	// Also borderless sizes
-
-    driver_data->finishings = PAPPL_FINISHINGS_PUNCH | PAPPL_FINISHINGS_STAPLE;
-
-    driver_data->num_media = (int)(sizeof(pwg_common_media) / sizeof(pwg_common_media[0]));
-    memcpy(driver_data->media, pwg_common_media, sizeof(pwg_common_media));
-
-    driver_data->num_source = 4;
-    driver_data->source[0]  = "main";
-    driver_data->source[1]  = "alternate";
-    driver_data->source[2]  = "manual";
-    driver_data->source[3]  = "by-pass-tray";
-
-    strlcpy(driver_data->media_ready[0].size_name, "na_letter_8.5x11in", sizeof(driver_data->media_ready[0].size_name));
-    strlcpy(driver_data->media_ready[1].size_name, "iso_a4_210x297mm", sizeof(driver_data->media_ready[1].size_name));
-
-    driver_data->sides_supported = PAPPL_SIDES_ONE_SIDED | PAPPL_SIDES_TWO_SIDED_LONG_EDGE | PAPPL_SIDES_TWO_SIDED_SHORT_EDGE;
-    driver_data->sides_default   = PAPPL_SIDES_TWO_SIDED_LONG_EDGE;
-  }
-  else
-  {
-    papplLog(system, PAPPL_LOGLEVEL_ERROR, "No dimension information in driver name '%s'.", driver_name);
-    return (false);
-  }
-
-  if (!strncmp(driver_name, "pwg_common-", 11))
-  {
-    driver_data->color_supported = PAPPL_COLOR_MODE_AUTO | PAPPL_COLOR_MODE_AUTO_MONOCHROME | PAPPL_COLOR_MODE_COLOR | PAPPL_COLOR_MODE_MONOCHROME;
-    driver_data->color_default   = PAPPL_COLOR_MODE_AUTO;
-
-    driver_data->num_type = 8;
-    driver_data->type[0]  = "stationery";
-    driver_data->type[1]  = "stationery-letterhead";
-    driver_data->type[2]  = "labels";
-    driver_data->type[3]  = "photographic";
-    driver_data->type[4]  = "photographic-glossy";
-    driver_data->type[5]  = "photographic-matte";
-    driver_data->type[6]  = "transparency";
-    driver_data->type[7]  = "envelope";
-
-    driver_data->media_default.bottom_margin = driver_data->bottom_top;
-    driver_data->media_default.left_margin   = driver_data->left_right;
-    driver_data->media_default.right_margin  = driver_data->left_right;
-    driver_data->media_default.size_width    = 21590;
-    driver_data->media_default.size_length   = 27940;
-    driver_data->media_default.top_margin    = driver_data->bottom_top;
-    strlcpy(driver_data->media_default.size_name, "na_letter_8.5x11in", sizeof(driver_data->media_default.size_name));
-    strlcpy(driver_data->media_default.source, "main", sizeof(driver_data->media_default.source));
-    strlcpy(driver_data->media_default.type, "stationery", sizeof(driver_data->media_default.type));
-  }
-  else
-  {
-    driver_data->color_supported = PAPPL_COLOR_MODE_AUTO | PAPPL_COLOR_MODE_MONOCHROME;
-    driver_data->color_default   = PAPPL_COLOR_MODE_MONOCHROME;
-
-    memset(driver_data->gdither, 127, sizeof(driver_data->gdither));
-
-    driver_data->icons[0].data    = label_sm_png;
-    driver_data->icons[0].datalen = sizeof(label_sm_png);
-    driver_data->icons[1].data    = label_md_png;
-    driver_data->icons[1].datalen = sizeof(label_md_png);
-    driver_data->icons[2].data    = label_lg_png;
-    driver_data->icons[2].datalen = sizeof(label_lg_png);
-
-    driver_data->top_offset_supported[0] = -2000;
-    driver_data->top_offset_supported[1] = 2000;
-
-    driver_data->tracking_supported = PAPPL_MEDIA_TRACKING_MARK | PAPPL_MEDIA_TRACKING_CONTINUOUS;
-
-    driver_data->num_type = 3;
-    driver_data->type[0]  = "labels";
-    driver_data->type[1]  = "continuous";
-    driver_data->type[2]  = "labels-continuous";
-
-    driver_data->sides_supported = PAPPL_SIDES_ONE_SIDED;
-    driver_data->sides_default   = PAPPL_SIDES_ONE_SIDED;
-  }
-
-  // Fill out ready and default media (default == ready media from the first source)
-  for (i = 0; i < driver_data->num_source; i ++)
-  {
-    pwg_media_t *pwg = pwgMediaForPWG(driver_data->media_ready[i].size_name);
-
-    if (pwg)
-    {
-      driver_data->media_ready[i].bottom_margin = driver_data->bottom_top;
-      driver_data->media_ready[i].left_margin   = driver_data->left_right;
-      driver_data->media_ready[i].right_margin  = driver_data->left_right;
-      driver_data->media_ready[i].size_width    = pwg->width;
-      driver_data->media_ready[i].size_length   = pwg->length;
-      driver_data->media_ready[i].top_margin    = driver_data->bottom_top;
-      driver_data->media_ready[i].tracking      = PAPPL_MEDIA_TRACKING_MARK;
-      strlcpy(driver_data->media_ready[i].source, driver_data->source[i], sizeof(driver_data->media_ready[i].source));
-      strlcpy(driver_data->media_ready[i].type, driver_data->type[0], sizeof(driver_data->media_ready[i].type));
-    }
-  }
-
-  driver_data->media_default = driver_data->media_ready[0];
-
   return (true);
 }
 

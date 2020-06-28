@@ -1206,19 +1206,18 @@ make_attrs_scan(pappl_system_t       *system,// I - System
   ippAddStrings(attrs, IPP_TAG_PRINTER, IPP_TAG_KEYWORD, "printer-settable-attributes", (int)(sizeof(printer_settable_attributes) / sizeof(printer_settable_attributes[0])), NULL, printer_settable_attributes);
 
 
-  // sides-supported
+  // input-sides-supported
   if (data->sides_supported)
   {
     for (num_values = 0, bit = PAPPL_SIDES_ONE_SIDED; bit <= PAPPL_SIDES_TWO_SIDED_SHORT_EDGE; bit *= 2)
     {
       if (data->sides_supported & bit)
-	svalues[num_values ++] = _papplSidesString(bit);
+	    svalues[num_values ++] = _papplSidesString(bit);
     }
-
-    ippAddStrings(attrs, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_KEYWORD), "sides-supported", num_values, NULL, svalues);
+    ippAddStrings(attrs, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_KEYWORD), "input-sides-supported", num_values, NULL, svalues);
   }
   else
-    ippAddString(attrs, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_KEYWORD), "sides-supported", NULL, "one-sided");
+    ippAddString(attrs, IPP_TAG_PRINTER, IPP_CONST_TAG(IPP_TAG_KEYWORD), "input-sides-supported", NULL, "one-sided");
 
   return (attrs);
 }

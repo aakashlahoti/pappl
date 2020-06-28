@@ -390,9 +390,15 @@ papplPrinterCreate(
 
     // retry-time-out-supported
     ippAddRange(printer->attrs, IPP_TAG_PRINTER, "retry-time-out-supported", 0,5);
+
+    // input-quality-supported
+    ippAddIntegers(printer->attrs, IPP_TAG_PRINTER, IPP_TAG_ENUM, "input-quality-supported", (int)(sizeof(print_quality) / sizeof(print_quality[0])), print_quality);
   }
   else
   {
+    // print-quality-supported
+    ippAddIntegers(printer->attrs, IPP_TAG_PRINTER, IPP_TAG_ENUM, "print-quality-supported", (int)(sizeof(print_quality) / sizeof(print_quality[0])), print_quality);
+
     // copies-supported
     // TODO: filter based on document format
     ippAddRange(printer->attrs, IPP_TAG_PRINTER, "copies-supported", 1, 999);
@@ -504,9 +510,6 @@ papplPrinterCreate(
 
   // operations-supported
   ippAddIntegers(printer->attrs, IPP_TAG_PRINTER, IPP_TAG_ENUM, "operations-supported", (int)(sizeof(operations) / sizeof(operations[0])), operations);
-
-  // print-quality-supported
-  ippAddIntegers(printer->attrs, IPP_TAG_PRINTER, IPP_TAG_ENUM, "print-quality-supported", (int)(sizeof(print_quality) / sizeof(print_quality[0])), print_quality);
 
   // printer-device-id
   if (printer->device_id)
